@@ -430,6 +430,10 @@ jobs:
 
   build-tools-asset:
     name: build-tools-asset
+    # Fork build: the CLI tools tarball is not needed for the kata-deploy guest
+    # image (publish consumes kata-artifacts-*, not kata-tools-*). Don't let its
+    # failure block the publish step.
+    continue-on-error: true
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -495,6 +499,9 @@ jobs:
 
   create-kata-tools-tarball:
     name: create-kata-tools-tarball
+    # Fork build: not needed for the kata-deploy guest image; keep its failure
+    # from blocking the publish step.
+    continue-on-error: true
     runs-on: ubuntu-22.04
     needs: [build-tools-asset]
     permissions:
