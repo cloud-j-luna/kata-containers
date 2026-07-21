@@ -1,0 +1,67 @@
+# Custom kata-deploy build for the initdata registry-auth feature.
+#
+# Builds the amd64 kata-static assets (including the patched kata-agent from this
+# branch) on GitHub-hosted runners and publishes a kata-deploy image to GHCR:
+#
+#     ghcr.io/cloud-j-luna/kata-deploy:<tag>
+#
+# It reuses kata's own reusable build/publish workflows, pointed at GHCR instead
+# of quay.io. The quay.io login in publish-kata-images.yaml is gated on
+# `registry == 'quay.io'`, so it is skipped when we publish to ghcr.io; only the
+# ghcr.io login (via GITHUB_TOKEN) runs.
+#
+# The patched kata-agent is built as the `agent` asset and baked into the
+# confidential rootfs during the payload assembly, so no separate rootfs step is
+# needed.
+#
+# One-time fork setup (Settings -> Secrets and variables -> Actions -> Secrets):
+#   - KBUILD_SIGN_PIN        : any non-empty value. Module-signing pin; only the
+#                              nvidia-gpu kernel asset uses it, and the build
+#                              generates its own ephemeral signing key, so any
+#                              value works.
+#   - QUAY_DEPLOYER_PASSWORD : any non-empty value. Declared `required` by the
+#                              reusable workflows but unused when registry=ghcr.io.
+#
+# Run it manually from the Actions tab (workflow_dispatch). The first run is slow
+# (cold build cache); later runs reuse cached assets.
+name: Build custom kata-deploy (initdata registry-auth)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to publish to ghcr.io/cloud-j-luna/kata-deploy
+        required: true
+        default: 3.32.0-initdata-auth
+
+permissions: {}
+
+jobs:
+  build-assets:
+    name: build-amd64-assets
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build-kata-static-tarball-amd64.yaml
+    with:
+      # Upload assets as workflow artifacts only; do not push to a registry
+      # (this also avoids the quay.io login in the build workflow).
+      push-to-registry: "no"
+    secrets: inherit
+
+  publish:
+    name: publish-kata-deploy-to-ghcr
+    needs: build-assets
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish-kata-images.yaml
+    with:
+      registry: ghcr.io
+      repo: cloud-j-luna/kata-deploy
+      tag: ${{ inputs.tag }}
+      arch: amd64
+      push: "true"
+    secrets: inherit
